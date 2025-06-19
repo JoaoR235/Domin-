@@ -140,13 +140,13 @@ def executar_jogada(game_state, peca, lado_escolhido, player_id):
 def desenhar_mao_jogador(mao):
     if not mao: return
     espacamento = 10; largura_total = len(mao) * largura_peca + (len(mao) - 1) * espacamento
-    x = (largura_tela - largura_total) // 2; y = altura_tela - altura_peca - 20
+    x = (largura_tela - largura_total) // 2; y = altura_tela - altura_peca - 80
     for peca in mao:
         peca.rect = pygame.Rect(x, y, largura_peca, altura_peca); screen.blit(peca.imagem, peca.rect)
         x += largura_peca + espacamento
 
 def desenhar_maos_bots(maos_bots):
-    espacamento = 10; margin = 20; mao_top = maos_bots[1]
+    espacamento = 10; margin = 70; mao_top = maos_bots[1]
     if mao_top:
         largura_total = len(mao_top) * largura_peca + (len(mao_top) - 1) * espacamento
         x_top = (largura_tela - largura_total) // 2
@@ -308,3 +308,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
