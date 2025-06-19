@@ -235,7 +235,7 @@ def desenhar_info(game_state):
         screen.blit(texto_vencedor, (largura_tela/2 - texto_vencedor.get_width()/2, altura_tela/2 - 100))
     elif game_state.turno_atual == 0:
         texto_turno = font.render("Sua vez de jogar!", True, BRANCO)
-        screen.blit(texto_turno, (largura_tela / 2 - texto_turno.get_width() / 2, altura_tela - 150))
+        screen.blit(texto_turno, (largura_tela / 2 - texto_turno.get_width() / 2, altura_tela - 250))
 
 # --- Lógica Principal do Jogo ---
 def main():
