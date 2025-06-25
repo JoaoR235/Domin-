@@ -135,6 +135,18 @@ class GameState:
             texto = font.render(f"Jogador {i + 1}: {vitorias} vitórias", True, BRANCO)
             screen.blit(texto, (10, y))
             y += 30
+    def reset_rodada(self):
+        self.peca_encaixada_em_bucha = False
+        self.empate_anterior = False
+        self.maos = [[] for _ in range(self.num_players)]
+        self.tabuleiro = []
+        self.pontas = [-1, -1]
+        self.turno_atual = -1
+        self.vencedor = -1
+        self.peca_inicial_obj = None
+        self.semaphores = [threading.Semaphore(0) for _ in range(self.num_players)]
+        self.passes_consecutivos = 0
+
 
 
 
@@ -595,8 +607,15 @@ def tela_final(empate=False, vencedor=-1):
     
     
 # --- Lógica Principal do Jogo ---
-def main():
-    game_state = GameState(num_players=4)
+def main(game_state):
+    if game_state is None:
+        game_state = GameState(num_players=4)
+    else:
+        # reiniciar estado de rodada, mas manter vitórias
+        game_state.reset_rodada()
+
+    
+
     game_state.distribuir_pecas()
     bots = [Bot(i, game_state) for i in range(1, 4)]
     [bot.start() for bot in bots]
@@ -676,7 +695,7 @@ def main():
             empate = game_state.vencedor == -2
             vencedor = game_state.vencedor
             tela_final(empate=empate, vencedor=vencedor)
-            main()  # Reinicia a função main
+            main(game_state)# Reinicia a função main
             return
 
         # --- Atualização da tela ---
@@ -714,14 +733,29 @@ def main():
 
         pygame.display.update()
         clock.tick(30)
+    def reset_rodada(self):
+        self.peca_encaixada_em_bucha = False
+        self.empate_anterior = False
+        self.maos = [[] for _ in range(self.num_players)]
+        self.tabuleiro = []
+        self.pontas = [-1, -1]
+        self.turno_atual = -1
+        self.vencedor = -1
+        self.peca_inicial_obj = None
+        self.semaphores = [threading.Semaphore(0) for _ in range(self.num_players)]
+        self.passes_consecutivos = 0
 
     pygame.quit()
     sys.exit()
+    
 
 if __name__ == '__main__':
     escolha = menu_principal()
     if escolha == "jogo":
-        main()
+        game_state = GameState(num_players=4)
+        main(game_state)
 
 
-#desenhar_info def tela_final(empate=False): Fim da rodada if if game_state.vencedor != -1:
+
+
+#game_state = GameState(num_players=4) main() class GameState:
