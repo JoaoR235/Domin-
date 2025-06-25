@@ -14,7 +14,7 @@ font = pygame.font.Font(None, 36)
 font_grande = pygame.font.Font(None, 50)
 
 # --- Cores ---
-BRANCO = (255, 255, 255); VERMELHO = (200, 0, 0); VERMELHO = (255, 255, 0)
+BRANCO = (255, 255, 255); VERMELHO = (200, 0, 0); AMARELO = (255, 255, 0)
 CINZA = (100, 100, 100); VERDE_ESCURO = (0, 100, 0); AZUL_ESCURO = (0, 0, 100)
 
 # --- Carregamento de Imagens e Definições de Tamanho ---
@@ -73,9 +73,6 @@ class GameState:
         self.lock = threading.Lock()
         self.passes_consecutivos = 0  # NOVO
 
-    def verifica_primeira_partida(self):
-        return all(v == 0 for v in self.vitorias)
-
     def distribuir_pecas(self):
         todas_as_pecas = [Domino(i, j) for i in range(7) for j in range(i, 7)]
         random.shuffle(todas_as_pecas)
@@ -88,10 +85,9 @@ class GameState:
                 if peca.val1 == peca.val2 and peca.val1 > maior_carroca:
                     maior_carroca, jogador_inicial, peca_inicial = peca.val1, i, peca
 
-        if self.verifica_primeira_partida():
-            self.turno_atual = jogador_inicial if jogador_inicial != -1 else 0
-        else:
-            self.turno_atual = self.vencedor if self.vencedor != -1 else 0
+        if jogador_inicial != -1:
+            self.turno_atual = jogador_inicial
+            print(f"Jogador {self.turno_atual + 1} começa por ter a maior dupla.")
 
         if not peca_inicial and self.maos[self.turno_atual]:
             self.peca_inicial_obj = self.maos[self.turno_atual][0]
@@ -108,24 +104,39 @@ class GameState:
     def passar_a_vez(self):
         print(f"Jogador {self.turno_atual} passou a vez.")
         self.passes_consecutivos += 1
-        if self.passes_consecutivos >= self.num_players:
-          print("Empate detectado!")
-          self.vencedor = -2  # valor especial para empate
-          return
         self.turno_atual = (self.turno_atual + 1) % self.num_players
         self.semaphores[self.turno_atual].release()
 
+    def verifica_campeao(self):
+        for i, vitorias in enumerate(self.vitorias):
+            if vitorias >= 5:
+                return i  # Retorna o ID do jogador campeão
+        return -1 # Retorna -1 se ninguém ganhou ainda
 
-    def contabilizar_vitoria(self, player_id):
-        if 0 <= player_id < len(self.vitorias):
-            self.vitorias[player_id] += 2  # vitória vale 2 pontos
-            self.vencedor = player_id
-            print(f"Vitória contabilizada para o Jogador {player_id + 1}")
+    def contabilizar_pontos(self, player_id, peca_final):
+        """
+        Contabiliza os pontos da rodada.
+        - 1 Ponto por vitória normal.
+        - 2 Pontos se a última peça for uma dupla que encaixa dos dois lados.
+        """
+        pontos_da_rodada = 1
+        is_double = peca_final.val1 == peca_final.val2
 
+        # Condição para pontuação especial
+        if is_double:
+            ponta_esq, ponta_dir = self.pontas
+            # Verifica se a dupla poderia ser jogada em AMBAS as pontas ANTES da jogada final
+            if peca_final.val1 == ponta_esq and peca_final.val2 == ponta_dir:
+                pontos_da_rodada = 2
+                print(f"PONTUAÇÃO ESPECIAL! Jogador {player_id + 1} ganha 2 pontos!")
+
+        self.vitorias[player_id] += pontos_da_rodada
+        self.vencedor = player_id
+        print(f"Vitória de {pontos_da_rodada} ponto(s) para o Jogador {player_id + 1}")
+
+    # ALTERADO: Agora só verifica a condição de vitória
     def verificar_vitoria(self, player_id):
         if not self.maos[player_id]:
-            self.vencedor = player_id
-            self.contabilizar_vitoria(player_id)
             return True
         return False
 
@@ -185,10 +196,19 @@ class Bot(threading.Thread):
         while self.game_state.vencedor == -1:
             self.game_state.semaphores[self.player_id].acquire()
             if self.game_state.vencedor != -1: break
+
+        # NOVO: Verificação de empate no início do turno do bot
+            with self.game_state.lock:
+                if self.game_state.passes_consecutivos >= self.game_state.num_players:
+                    if self.game_state.vencedor == -1: # Garante que o empate seja setado apenas uma vez
+                        print("Empate detectado no turno do Bot!")
+                        self.game_state.vencedor = -2
+                    break # Encerra o loop do bot
+
             time.sleep(random.uniform(1.0, 2.5))
             with self.game_state.lock:
-                if self.game_state.turno_atual != self.player_id: continue
-                
+                if self.game_state.turno_atual != self.player_id or self.game_state.vencedor != -1: continue
+            
                 mao_bot = self.game_state.maos[self.player_id]; ponta_esq, ponta_dir = self.game_state.pontas
                 peca_a_jogar, lado_a_jogar = None, None
                 for peca in mao_bot:
@@ -196,36 +216,56 @@ class Bot(threading.Thread):
                         peca_a_jogar, lado_a_jogar = peca, 'esq'; break
                     elif peca.val1 == ponta_dir or peca.val2 == ponta_dir:
                         peca_a_jogar, lado_a_jogar = peca, 'dir'; break
-                
+            
                 if peca_a_jogar:
                     executar_jogada(self.game_state, peca_a_jogar, lado_a_jogar, self.player_id)
+                    # A vez só é passada aqui se o bot jogar.
+                    self.game_state.turno_atual = (self.game_state.turno_atual + 1) % self.game_state.num_players
+                    self.game_state.semaphores[self.game_state.turno_atual].release()
                 else: 
-                    print(f"Bot {self.player_id} passou a vez.")
-                self.game_state.passar_a_vez()
+                    # Se não jogar, o bot simplesmente passa a vez.
+                    self.game_state.passar_a_vez()
 
 # --- Funções Auxiliares e de Desenho ---
 def executar_jogada(game_state, peca, lado_escolhido, player_id):
+    # Salva as pontas ANTES da jogada, para a lógica de pontuação especial
+    pontas_antes = game_state.pontas[:]
+    
+    # Verifica se esta é a jogada da vitória
+    eh_jogada_final = len(game_state.maos[player_id]) == 1
+
     if not game_state.tabuleiro:
         game_state.tabuleiro.append(peca)
         if not game_state.peca_inicial_obj: game_state.peca_inicial_obj = peca
         game_state.pontas = [peca.val1, peca.val2]
     else:
-        ponta_esq, ponta_dir = game_state.pontas; peca.inverter_visual = False
+        ponta_esq, ponta_dir = game_state.pontas
+        peca.inverter_visual = False
         if lado_escolhido == 'esq':
             if peca.val1 == ponta_esq:
-                peca.inverter_visual = True; game_state.pontas[0] = peca.val2
-            else: game_state.pontas[0] = peca.val1
+                peca.inverter_visual = True
+                game_state.pontas[0] = peca.val2
+            else:
+                game_state.pontas[0] = peca.val1
             game_state.tabuleiro.insert(0, peca)
         elif lado_escolhido == 'dir':
             if peca.val2 == ponta_dir:
-                peca.inverter_visual = True; game_state.pontas[1] = peca.val1
-            else: game_state.pontas[1] = peca.val2
+                peca.inverter_visual = True
+                game_state.pontas[1] = peca.val1
+            else:
+                game_state.pontas[1] = peca.val2
             game_state.tabuleiro.append(peca)
 
     print(f"Jogador {player_id} jogou [{peca.val1}|{peca.val2}] na ponta {lado_escolhido}.")
     game_state.maos[player_id].remove(peca)
-    game_state.passes_consecutivos = 0  # resetar após jogada
-    game_state.verificar_vitoria(player_id)
+    game_state.passes_consecutivos = 0
+
+    # NOVO: Lógica de pontuação chamada aqui
+    if eh_jogada_final:
+        # Passa as pontas de ANTES da jogada para o método
+        game_state_temporario = game_state
+        game_state_temporario.pontas = pontas_antes
+        game_state.contabilizar_pontos(player_id, peca)
 
 def desenhar_mao_jogador(mao):
     if not mao: return
@@ -257,10 +297,13 @@ def desenhar_tabuleiro(game_state):
     tabuleiro = game_state.tabuleiro
     if not tabuleiro: return
 
-    margin = 150; pecas_desenhadas = []
+    margin = 150
+    pecas_desenhadas = []
 
-    try: anchor_index = tabuleiro.index(game_state.peca_inicial_obj)
-    except (ValueError, AttributeError): anchor_index = 0
+    try:
+        anchor_index = tabuleiro.index(game_state.peca_inicial_obj)
+    except (ValueError, AttributeError):
+        anchor_index = 0
     anchor_peca = tabuleiro[anchor_index]
 
     is_double = anchor_peca.val1 == anchor_peca.val2
@@ -271,9 +314,12 @@ def desenhar_tabuleiro(game_state):
     def desenhar_corrente(pecas, p_conexao_inicial, direcao_inicial, lado):
         ponto_conexao = p_conexao_inicial
         direcao = direcao_inicial
-        # --- Flags para controlar as fases de espelhamento ---
+        rect_anterior = rect_anchor
+
+        # NOVO: Flags para controlar o estado das curvas e o espelhamento
         a_corrente_esquerda_virou_para_baixo = False
-        a_corrente_direita_virou_para_esquerda = False # <--- ALTERAÇÃO: Nova flag
+        a_corrente_esquerda_virou_para_direita = False
+        a_corrente_direita_virou_para_esquerda = False
 
         for peca in pecas:
             is_double = peca.val1 == peca.val2
@@ -299,60 +345,70 @@ def desenhar_tabuleiro(game_state):
                 direcao_antiga = direcao
                 direcao = nova_direcao
                 
-                # --- Lógica para ativar as flags de fase ---
+                # NOVO: Lógica para "levantar as bandeiras" quando uma curva específica acontece
                 if lado == 'esq':
-                    if direcao == (0, 1) and direcao_antiga == (-1, 0):
+                    if direcao_antiga == (-1, 0) and direcao == (0, 1):
                         a_corrente_esquerda_virou_para_baixo = True
-                # <--- ALTERAÇÃO: Lógica para ativar a nova flag da direita ---
+                    elif direcao_antiga == (0, 1) and direcao == (1, 0):
+                        a_corrente_esquerda_virou_para_direita = True
                 elif lado == 'dir':
-                    if direcao == (-1, 0) and direcao_antiga == (0, 1):
+                    if direcao_antiga == (0, 1) and direcao == (-1, 0):
                         a_corrente_direita_virou_para_esquerda = True
 
                 if is_double:
                     img = pygame.transform.rotate(peca.imagem, 90 if direcao[1] != 0 else 0)
                 else:
                     img = pygame.transform.rotate(peca.imagem, 0 if direcao[1] != 0 else 90)
-
+                
                 rect = img.get_rect()
-                if direcao == (0, 1): rect.midtop = ponto_conexao
-                elif direcao in [(-1, 0), (1,0)]:
-                    if lado == 'dir': rect.midright = ponto_conexao
-                    else: rect.midleft = ponto_conexao
-            
-            # --- BLOCO DE ESPELHAMENTO UNIFICADO ---
+
+                if direcao_antiga == (1, 0) and direcao == (0, 1):
+                    rect.topleft = rect_anterior.topright
+                elif direcao_antiga == (-1, 0) and direcao == (0, 1):
+                    rect.topright = rect_anterior.topleft
+                elif direcao_antiga == (0, 1) and direcao == (-1, 0) and lado == 'dir':
+                    rect.bottomright = rect_anterior.bottomleft
+                elif direcao_antiga == (0, 1) and direcao == (1, 0) and lado == 'esq':
+                    rect.bottomleft = rect_anterior.bottomright
+
             flip_x, flip_y = False, False
             if peca.inverter_visual:
                 flip_x = (direcao[0] != 0)
                 flip_y = (direcao[1] != 0)
-
-            # Regras para a corrente da ESQUERDA
-            if a_corrente_esquerda_virou_para_baixo:
-                flip_x = not flip_x
-                if direcao == (0, 1):
-                    flip_y = not flip_y
             
-            # <--- ALTERAÇÃO: Nova regra para a corrente da DIREITA ---
-            if a_corrente_direita_virou_para_esquerda:
-                flip_x = not flip_x
+            # --- NOVO: LÓGICA DE ESPELHAMENTO BASEADA NAS FLAGS ---
+            # Regra 1: Corrente da esquerda, após virar para baixo
+            if a_corrente_esquerda_virou_para_baixo and not a_corrente_esquerda_virou_para_direita:
+                if direcao == (0, 1): # Se estiver na seção vertical
+                    flip_y = not flip_y # Espelha verticalmente
 
-            # Aplica a transformação final
+            # Regra 2: Corrente da esquerda, após virar para a direita
+            if a_corrente_esquerda_virou_para_direita:
+                if direcao == (1, 0): # Se estiver na nova seção horizontal
+                    flip_x = not flip_x # Espelha horizontalmente
+
+            # Regra 3: Corrente da direita, após virar para a esquerda
+            if a_corrente_direita_virou_para_esquerda:
+                if direcao == (-1, 0): # Se estiver na nova seção horizontal
+                    flip_x = not flip_x # Espelha horizontalmente
+            # --- FIM DA LÓGICA DE ESPELHAMENTO ---
+
             if flip_x or flip_y:
                 img = pygame.transform.flip(img, flip_x, flip_y)
-            # --- FIM DO BLOCO ---
 
             pecas_desenhadas.append({'img': img, 'rect': rect})
+            
             if direcao == (1, 0): ponto_conexao = rect.midright
             elif direcao == (-1, 0): ponto_conexao = rect.midleft
             elif direcao == (0, 1): ponto_conexao = rect.midbottom
+            
+            rect_anterior = rect
 
     desenhar_corrente(tabuleiro[anchor_index+1:], rect_anchor.midright, (1,0), 'dir')
     desenhar_corrente(reversed(tabuleiro[:anchor_index]), rect_anchor.midleft, (-1,0), 'esq')
 
-    for p in pecas_desenhadas: screen.blit(p['img'], p['rect'])
-
-
-
-
+    for p in pecas_desenhadas:
+        screen.blit(p['img'], p['rect'])
 
 def desenhar_info(game_state):
     if game_state.vencedor != -1:
@@ -598,13 +654,49 @@ def tela_final(empate=False, vencedor=-1):
                     pygame.quit(); sys.exit()
                 elif event.key == pygame.K_RETURN:
                     return
-
-
-
-
-
     
-    
+def tela_campeao_final(campeao_id, placar_final):
+    while True:
+        screen.fill((20, 20, 20))
+        
+        # Título
+        titulo = font_grande.render("FIM DE JOGO!", True, AMARELO) # Use a cor que preferir
+        screen.blit(titulo, (largura_tela // 2 - titulo.get_width() // 2, 100))
+
+        # Mensagem do Campeão
+        if campeao_id == 0:
+            msg_campeao = "Você é o grande campeão!"
+        else:
+            msg_campeao = f"O Jogador {campeao_id + 1} é o grande campeão!"
+        
+        texto_campeao = font_grande.render(msg_campeao, True, BRANCO)
+        screen.blit(texto_campeao, (largura_tela // 2 - texto_campeao.get_width() // 2, 200))
+
+        # Placar Final
+        placar_titulo = font.render("Placar Final:", True, BRANCO)
+        screen.blit(placar_titulo, (largura_tela // 2 - placar_titulo.get_width() // 2, 300))
+        for i, pontos in enumerate(placar_final):
+            nome = "Você" if i == 0 else f"Jogador {i+1}"
+            texto_placar = font.render(f"{nome}: {pontos} pontos", True, CINZA)
+            screen.blit(texto_placar, (largura_tela // 2 - texto_placar.get_width() // 2, 350 + i * 40))
+
+        # Opções
+        jogar_novamente = font.render("Pressione ENTER para Jogar Novamente", True, VERDE_ESCURO)
+        sair = font.render("Pressione ESC para Sair", True, VERMELHO)
+        screen.blit(jogar_novamente, (largura_tela // 2 - jogar_novamente.get_width() // 2, 550))
+        screen.blit(sair, (largura_tela // 2 - sair.get_width() // 2, 600))
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "SAIR"
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    return "JOGAR_NOVAMENTE"
+                elif event.key == pygame.K_ESCAPE:
+                    return "SAIR"
+
 # --- Lógica Principal do Jogo ---
 def main(game_state):
     if game_state is None:
@@ -628,6 +720,10 @@ def main(game_state):
     running = True
 
     while running:
+        if game_state.passes_consecutivos >= game_state.num_players:
+            if game_state.vencedor == -1:
+                print("Empate detectado no seu turno!")
+                game_state.vencedor = -2
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -691,11 +787,7 @@ def main(game_state):
 
         # --- Verifica se houve vencedor e mostra tela final ---
         if game_state.vencedor != -1:
-            empate = game_state.vencedor == -2
-            vencedor = game_state.vencedor
-            tela_final(empate=empate, vencedor=vencedor)
-            main(game_state)# Reinicia a função main
-            return
+            return # Apenas retorna, o game_loop vai controlar o fluxo
 
         # --- Atualização da tela ---
         screen.blit(background_image, (0, 0))
@@ -748,13 +840,44 @@ def main(game_state):
     sys.exit()
     
 
+def game_loop():
+    game_state = GameState(num_players=4)
+
+    while True: # Loop principal do jogo, controla as rodadas
+        # Inicia uma nova rodada
+        main(game_state) 
+
+        # Verifica se a rodada terminou com um vencedor (ou empate)
+        if game_state.vencedor != -1:
+            # Verifica se há um campeão final (5+ pontos)
+            campeao_id = game_state.verifica_campeao()
+            if campeao_id != -1:
+                # Mostra a tela de campeão e decide o que fazer depois
+                escolha_final = tela_campeao_final(campeao_id, game_state.vitorias)
+                if escolha_final == "JOGAR_NOVAMENTE":
+                    game_state = GameState(num_players=4) # Reseta tudo para um novo jogo
+                    continue # Volta para o início do loop e começa uma nova partida
+                else:
+                    return # Sai da função game_loop e encerra o jogo
+
+            # Se não há campeão, mostra a tela de fim de rodada
+            else:
+                empate = game_state.vencedor == -2
+                tela_final(empate=empate, vencedor=game_state.vencedor)
+                # Adicione esta linha para resetar a rodada antes de continuar
+                game_state.reset_rodada() 
+        else:
+            # Se a rodada não terminou (ex: usuário voltou ao menu), sai do loop
+            return
+
 if __name__ == '__main__':
-    escolha = menu_principal()
-    if escolha == "jogo":
-        game_state = GameState(num_players=4)
-        main(game_state)
+    while True:
+        escolha_menu = menu_principal()
+        if escolha_menu == "jogo":
+            game_loop() # Inicia o ciclo de jogo
+        else:
+            # Se o usuário escolher "Sair" no menu principal
+            break 
 
-
-
-
-#game_state = GameState(num_players=4) main() class GameState:
+    pygame.quit()
+    sys.exit()
