@@ -71,11 +71,7 @@ class GameState:
         self.peca_inicial_obj = None
         self.semaphores = [threading.Semaphore(0) for _ in range(num_players)]
         self.lock = threading.Lock()
-        self.passes_consecutivos = 0
-        self.pontuacao = [0] * num_players  # Pontuação especial
-        self.pontos_rodada = [0] * num_players  # Pontos extras temporários da rodada
-
-
+        self.passes_consecutivos = 0  # NOVO
 
     def verifica_primeira_partida(self):
         return all(v == 0 for v in self.vitorias)
@@ -102,17 +98,9 @@ class GameState:
         else:
             self.peca_inicial_obj = peca_inicial
 
-        if peca_inicial:
-            self.peca_inicial_obj = peca_inicial
-
-            if self.turno_atual != 0:  # se não for o jogador humano
-                with self.lock:
-                    executar_jogada(self, peca_inicial, 'dir', self.turno_atual)
-                    self.passar_a_vez()  # passa para o próximo jogador (jogador humano ou outro bot)
-            else:
-              # jogador humano começa com a peça inicial
-              self.peca_inicial_obj = peca_inicial
-
+        if self.turno_atual > 0 and peca_inicial:
+            with self.lock:
+                executar_jogada(self, peca_inicial, 'dir', self.turno_atual)
 
         print(f"Jogador {self.turno_atual} começa o jogo.")
         self.semaphores[self.turno_atual].release()
@@ -175,23 +163,17 @@ class GameState:
     def verificar_vitoria(self, player_id):
         if not self.maos[player_id]: 
             self.vencedor = player_id
-            self.contabilizar_vitoria(player_id)
-
-            # Somar pontos extras da rodada só se o jogador venceu
-            self.pontuacao[player_id] += self.pontos_rodada[player_id]
-            self.pontos_rodada = [0] * self.num_players  # zera para nova rodada
-
+            self.contabilizar_vitoria(player_id)  # Conta a vitória
             return True
         return False
     
     def exibir_vitorias(self):
         y = 50
-        for i in range(self.num_players):
-            texto = font.render(
-            f"Jogador {i + 1}: {self.vitorias[i]} vitórias | {self.pontuacao[i]} pontos extras",True, BRANCO)
+        for i, vitorias in enumerate(self.vitorias):
+            texto = font.render(f"Jogador {i + 1}: {vitorias} vitórias", True, BRANCO)
             screen.blit(texto, (100, y))
             y += 30
-
+    
 
 
 # --- Classe para os Bots (Threads) ---
@@ -243,29 +225,7 @@ def executar_jogada(game_state, peca, lado_escolhido, player_id):
     print(f"Jogador {player_id} jogou [{peca.val1}|{peca.val2}] na ponta {lado_escolhido}.")
     game_state.maos[player_id].remove(peca)
     game_state.passes_consecutivos = 0  # resetar após jogada
-
-# --- Cálculo de pontos extras da rodada (não somar ainda à pontuação final) ---
-    pontas_antes = game_state.pontas[:]  # copia antes da jogada
-    pontos_extra = 0
-
-    encaixa_esq = (peca.val1 == pontas_antes[0] or peca.val2 == pontas_antes[0])
-    encaixa_dir = (peca.val1 == pontas_antes[1] or peca.val2 == pontas_antes[1])
-    é_bucha = peca.val1 == peca.val2
-
-    if é_bucha and encaixa_esq and encaixa_dir:
-        pontos_extra = 4
-    elif é_bucha and (encaixa_esq or encaixa_dir):
-        pontos_extra = 2
-    elif encaixa_esq and encaixa_dir:
-        pontos_extra = 2
-    elif encaixa_esq or encaixa_dir:
-       pontos_extra = 1
-
-# Acumula os pontos especiais da rodada, mas não soma ainda na pontuação final
-    game_state.pontos_rodada[player_id] += pontos_extra
-
     game_state.verificar_vitoria(player_id)
-
 
 def desenhar_mao_jogador(mao):
     if not mao: return
@@ -645,6 +605,39 @@ def tela_final(empate=False, vencedor=-1):
 
     
     
+
+def tela_vitoria_geral(vitorias):
+    while True:
+        screen.fill((0, 0, 0))
+        titulo = font_grande.render("Fim de Jogo!", True, BRANCO)
+        screen.blit(titulo, (largura_tela // 2 - titulo.get_width() // 2, 80))
+
+        y = 160
+        for i, pontos in enumerate(vitorias):
+            texto = font.render(f"Jogador {i + 1}: {pontos} vitórias", True, BRANCO)
+            screen.blit(texto, (largura_tela // 2 - texto.get_width() // 2, y))
+            y += 40
+
+        reiniciar_texto = font.render("Pressione ENTER para jogar novamente", True, VERDE_ESCURO)
+        sair_texto = font.render("Pressione ESC para sair", True, CINZA)
+
+        screen.blit(reiniciar_texto, (largura_tela // 2 - reiniciar_texto.get_width() // 2, y + 60))
+        screen.blit(sair_texto, (largura_tela // 2 - sair_texto.get_width() // 2, y + 100))
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    pygame.quit(); sys.exit()
+                elif event.key == pygame.K_RETURN:
+                    game_state = GameState(num_players=4)
+                    main(game_state)
+                    return
+
+
 # --- Lógica Principal do Jogo ---
 def main(game_state):
     if game_state is None:
@@ -796,5 +789,3 @@ if __name__ == '__main__':
 
 
 
-
-#game_state = GameState(num_players=4) main() class GameState: executar_jogada() verificar_vitoria()

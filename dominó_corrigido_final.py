@@ -71,11 +71,7 @@ class GameState:
         self.peca_inicial_obj = None
         self.semaphores = [threading.Semaphore(0) for _ in range(num_players)]
         self.lock = threading.Lock()
-        self.passes_consecutivos = 0
-        self.pontuacao = [0] * num_players  # Pontuação especial
-        self.pontos_rodada = [0] * num_players  # Pontos extras temporários da rodada
-
-
+        self.passes_consecutivos = 0  # NOVO
 
     def verifica_primeira_partida(self):
         return all(v == 0 for v in self.vitorias)
@@ -102,17 +98,9 @@ class GameState:
         else:
             self.peca_inicial_obj = peca_inicial
 
-        if peca_inicial:
-            self.peca_inicial_obj = peca_inicial
-
-            if self.turno_atual != 0:  # se não for o jogador humano
-                with self.lock:
-                    executar_jogada(self, peca_inicial, 'dir', self.turno_atual)
-                    self.passar_a_vez()  # passa para o próximo jogador (jogador humano ou outro bot)
-            else:
-              # jogador humano começa com a peça inicial
-              self.peca_inicial_obj = peca_inicial
-
+        if self.turno_atual > 0 and peca_inicial:
+            with self.lock:
+                executar_jogada(self, peca_inicial, 'dir', self.turno_atual)
 
         print(f"Jogador {self.turno_atual} começa o jogo.")
         self.semaphores[self.turno_atual].release()
@@ -130,7 +118,7 @@ class GameState:
 
     def contabilizar_vitoria(self, player_id):
         if 0 <= player_id < len(self.vitorias):
-            self.vitorias[player_id] += 2  # vitória vale 2 pontos
+            self.vitorias[player_id] += 1  # vitória vale 2 pontos
             self.vencedor = player_id
             print(f"Vitória contabilizada para o Jogador {player_id + 1}")
 
@@ -175,23 +163,17 @@ class GameState:
     def verificar_vitoria(self, player_id):
         if not self.maos[player_id]: 
             self.vencedor = player_id
-            self.contabilizar_vitoria(player_id)
-
-            # Somar pontos extras da rodada só se o jogador venceu
-            self.pontuacao[player_id] += self.pontos_rodada[player_id]
-            self.pontos_rodada = [0] * self.num_players  # zera para nova rodada
-
+            self.contabilizar_vitoria(player_id)  # Conta a vitória
             return True
         return False
     
     def exibir_vitorias(self):
         y = 50
-        for i in range(self.num_players):
-            texto = font.render(
-            f"Jogador {i + 1}: {self.vitorias[i]} vitórias | {self.pontuacao[i]} pontos extras",True, BRANCO)
+        for i, vitorias in enumerate(self.vitorias):
+            texto = font.render(f"Jogador {i + 1}: {vitorias} vitórias", True, BRANCO)
             screen.blit(texto, (100, y))
             y += 30
-
+    
 
 
 # --- Classe para os Bots (Threads) ---
@@ -243,29 +225,7 @@ def executar_jogada(game_state, peca, lado_escolhido, player_id):
     print(f"Jogador {player_id} jogou [{peca.val1}|{peca.val2}] na ponta {lado_escolhido}.")
     game_state.maos[player_id].remove(peca)
     game_state.passes_consecutivos = 0  # resetar após jogada
-
-# --- Cálculo de pontos extras da rodada (não somar ainda à pontuação final) ---
-    pontas_antes = game_state.pontas[:]  # copia antes da jogada
-    pontos_extra = 0
-
-    encaixa_esq = (peca.val1 == pontas_antes[0] or peca.val2 == pontas_antes[0])
-    encaixa_dir = (peca.val1 == pontas_antes[1] or peca.val2 == pontas_antes[1])
-    é_bucha = peca.val1 == peca.val2
-
-    if é_bucha and encaixa_esq and encaixa_dir:
-        pontos_extra = 4
-    elif é_bucha and (encaixa_esq or encaixa_dir):
-        pontos_extra = 2
-    elif encaixa_esq and encaixa_dir:
-        pontos_extra = 2
-    elif encaixa_esq or encaixa_dir:
-       pontos_extra = 1
-
-# Acumula os pontos especiais da rodada, mas não soma ainda na pontuação final
-    game_state.pontos_rodada[player_id] += pontos_extra
-
     game_state.verificar_vitoria(player_id)
-
 
 def desenhar_mao_jogador(mao):
     if not mao: return
@@ -396,255 +356,21 @@ def desenhar_tabuleiro(game_state):
 
 def desenhar_info(game_state):
     if game_state.vencedor != -1:
-       empate = game_state.vencedor == -2
-       vencedor = game_state.vencedor
-       tela_final(empate=empate, vencedor=vencedor)
-       return
+            empate = game_state.vencedor == -2
+            vencedor = game_state.vencedor
+            tela_final(empate=empate, vencedor=vencedor)
 
-    elif game_state.turno_atual == 0:
-       texto_turno = font.render("Sua vez de jogar!", True, BRANCO)
-       screen.blit(texto_turno, (largura_tela / 2 - texto_turno.get_width() / 2, altura_tela - 250))
+            pygame.time.delay(500)  # Dá tempo para renderizar a tela final
 
-
-    game_state.exibir_vitorias()
-
-
-
-def jogador_tem_jogada_valida(game_state):
-    mao = game_state.maos[0]
-    ponta_esq, ponta_dir = game_state.pontas
-    
-    # Se o tabuleiro está vazio, qualquer peça é válida
-    if ponta_esq == -1:
-        return True
-    
-    # Verifica se alguma peça da mão encaixa em alguma ponta
-    for peca in mao:
-        if (
-            peca.val1 == ponta_esq or peca.val2 == ponta_esq or
-            peca.val1 == ponta_dir or peca.val2 == ponta_dir
-        ):
-            return True
-    return False
-
-# --- Mostrar quem está jogando ---
-def mostrar_turno_atual(game_state):
-    nomes = ["Você", "Bot 2", "Bot 3", "Bot 4"]
-    turno = game_state.turno_atual
-    if turno == -1: 
-        return
-    nome_turno = nomes[turno]
-    cor = BRANCO if turno == 0 else VERMELHO
-
-    texto = font.render(f"Vez de: {nome_turno}", True, cor)
-    # Novo posicionamento no canto superior direito:
-    x = largura_tela - texto.get_width() - 40  # 20px de margem direita
-    y = 20  # 20px de margem do topo
-    screen.blit(texto, (x, y))
-
-# --- Mostrar Regras ---
-def mostrar_regras():
-    esperando = True
-    while esperando:
-        screen.fill((30, 30, 30))
-        titulo = font_grande.render("Regras do Dominó", True, BRANCO)
-        regras = [
-            "1. Cada jogador começa com 7 peças.",
-            "2. A peça inicial é a maior dupla (ex: [6|6]).",
-            "3. O jogo segue em turnos no sentido horário.",
-            "4. Só é possível jogar peças que combinem com as pontas.",
-            "5. Se não tiver jogada válida, passe a vez.",
-            "6. Vence quem ficar sem peças primeiro."
-        ]
-        screen.blit(titulo, (largura_tela//2 - titulo.get_width()//2, 50))
-
-        for i, linha in enumerate(regras):
-            texto = font.render(linha, True, BRANCO)
-            screen.blit(texto, (100, 150 + i * 40))
-
-        texto_voltar = font.render("Pressione ESC para voltar", True, VERMELHO)
-        screen.blit(texto_voltar, (largura_tela - 350, altura_tela - 50))
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                esperando = False
-
-        pygame.display.flip()
-
-def mostrar_pontuacoes():
-    esperando = True
-    while esperando:
-        screen.fill((20, 20, 20))
-        titulo = font_grande.render("Pontuações", True, BRANCO)
-        screen.blit(titulo, (largura_tela//2 - titulo.get_width()//2, 100))
-
-        texto = font.render("As pontuações são mostradas no topo durante o jogo.", True, BRANCO)
-        screen.blit(texto, (largura_tela//2 - texto.get_width()//2, 250))
-
-        texto_voltar = font.render("Pressione ESC para voltar", True, VERMELHO)
-        screen.blit(texto_voltar, (largura_tela - 350, altura_tela - 50))
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                esperando = False
-
-        pygame.display.flip()  
-
-# --- Exibir Controles
-def exibir_controles():
-    controles_texto = [
-        "Controles do Jogo:",
-        "Esc: Pausar o Jogo",
-        "Seta para cima: Mover para cima no menu",
-        "Seta para baixo: Mover para baixo no menu",
-        "Enter: Selecionar opção no menu",
-        "Clique: Jogar uma peça"
-    ]
-
-    clock = pygame.time.Clock()
-
-    while True:
-        screen.fill((20, 20, 20))
-        titulo = font_grande.render("Controles", True, BRANCO)
-        screen.blit(titulo, (largura_tela // 2 - titulo.get_width() // 2, 150))
-
-        for i, linha in enumerate(controles_texto):
-            texto = font.render(linha, True, BRANCO)
-            screen.blit(texto, (largura_tela // 2 - texto.get_width() // 2, 250 + i * 40))
-
-        texto_voltar = font.render("Pressione ESC para voltar", True, VERMELHO)
-        screen.blit(texto_voltar, (largura_tela // 2 - texto_voltar.get_width() // 2, 350 + len(controles_texto) * 40))
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:  # Sai da tela de controles e volta ao menu principal
+            if not empate:
+                if game_state.vitorias[vencedor] >= 4:
+                    tela_vitoria_geral(game_state.vitorias)
                     return
 
-        pygame.display.flip()
-        clock.tick(30)
-
-# --- Função de Menu ---
-def menu_principal():
-    opcoes = ["Iniciar Jogo", "Controles", "Sair"]
-    selecionado = 0
-    clock = pygame.time.Clock()
-    
-
-    while True:
-        if background_menu:
-          screen.blit(background_menu, (0, 0))
-        else:
-         screen.fill((20, 20, 20))
+            main(game_state)
+            return
 
 
-        for i, opcao in enumerate(opcoes):
-            cor = VERMELHO if i == selecionado else BRANCO
-
-            texto = font.render(opcao, True, cor)
-            screen.blit(texto, (largura_tela // 2 - texto.get_width() // 2, 250 + i * 60))
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP:
-                    selecionado = (selecionado - 1) % len(opcoes)
-                elif event.key == pygame.K_DOWN:
-                    selecionado = (selecionado + 1) % len(opcoes)
-                elif event.key == pygame.K_RETURN:
-                    if opcoes[selecionado] == "Iniciar Jogo":
-                        return "jogo"
-                    elif opcoes[selecionado] == "Controles":
-                        exibir_controles()  # Exibe os controles quando a opção for selecionada
-                    elif opcoes[selecionado] == "Sair":
-                        pygame.quit()
-                        sys.exit()
-
-        pygame.display.flip()
-        clock.tick(30)
-        
-# --- Menu depois que a partida acaba ---
-def menu_pausa():
-    opcoes = ["Continuar", "Reiniciar", "Voltar ao Menu Principal"]
-    selecionado = 0
-    clock = pygame.time.Clock()
-
-    while True:
-        screen.fill((20, 20, 20))
-        titulo = font_grande.render("Pausa", True, BRANCO)
-        screen.blit(titulo, (largura_tela // 2 - titulo.get_width() // 2, 150))
-
-        for i, opcao in enumerate(opcoes):
-            cor = VERMELHO if i == selecionado else BRANCO
-            texto = font.render(opcao, True, cor)
-            screen.blit(texto, (largura_tela // 2 - texto.get_width() // 2, 250 + i * 60))
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP:
-                    selecionado = (selecionado - 1) % len(opcoes)
-                elif event.key == pygame.K_DOWN:
-                    selecionado = (selecionado + 1) % len(opcoes)
-                elif event.key == pygame.K_RETURN:
-                    return opcoes[selecionado]
-
-        pygame.display.flip()
-        clock.tick(30)
- 
-
-def tela_final(empate=False, vencedor=-1):
-    while True:
-        screen.fill((0, 0, 0))
-        msg = "Empate!" if empate else "Fim da rodada!"
-        texto = font_grande.render(msg, True, BRANCO)
-
-        # Determina quem venceu
-        if not empate:
-            if vencedor == 0:
-                resultado_texto = "Você venceu!"
-            else:
-                resultado_texto = f"Jogador {vencedor + 1} venceu!"
-        else:
-            resultado_texto = "Rodada empatada!"
-
-        texto_resultado = font_grande.render(resultado_texto, True, BRANCO)
-
-        sair = font.render("Pressione ESC para sair", True, CINZA)
-        continuar = font.render("Pressione ENTER para próxima rodada", True, VERDE_ESCURO)
-
-        screen.blit(texto, (largura_tela // 2 - texto.get_width() // 2, 100))
-        screen.blit(texto_resultado, (largura_tela // 2 - texto_resultado.get_width() // 2, 180))
-        screen.blit(sair, (largura_tela // 2 - sair.get_width() // 2, 320))
-        screen.blit(continuar, (largura_tela // 2 - continuar.get_width() // 2, 360))
-
-        pygame.display.flip()
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    pygame.quit(); sys.exit()
-                elif event.key == pygame.K_RETURN:
-                    return
-
-
-
-
-
-    
-    
 # --- Lógica Principal do Jogo ---
 def main(game_state):
     if game_state is None:
@@ -796,5 +522,3 @@ if __name__ == '__main__':
 
 
 
-
-#game_state = GameState(num_players=4) main() class GameState: executar_jogada() verificar_vitoria()
