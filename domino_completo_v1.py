@@ -327,7 +327,7 @@ def jogador_tem_jogada_valida(game_state):
 
 # --- Mostrar quem está jogando ---
 def mostrar_turno_atual(game_state):
-    nomes = ["Você", "Jogador 2", "Jogador 3", "Jogador 4"]
+    nomes = ["Você", "Bot 2", "Bot 3", "Bot 4"]
     turno = game_state.turno_atual
     if turno == -1: 
         return
@@ -336,7 +336,7 @@ def mostrar_turno_atual(game_state):
 
     texto = font.render(f"Vez de: {nome_turno}", True, cor)
     # Novo posicionamento no canto superior direito:
-    x = largura_tela - texto.get_width() - 20  # 20px de margem direita
+    x = largura_tela - texto.get_width() - 40  # 20px de margem direita
     y = 20  # 20px de margem do topo
     screen.blit(texto, (x, y))
 
