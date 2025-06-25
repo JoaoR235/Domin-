@@ -359,7 +359,6 @@ def desenhar_info(game_state):
        empate = game_state.vencedor == -2
        vencedor = game_state.vencedor
        tela_final(empate=empate, vencedor=vencedor)
-       main()
        return
 
     elif game_state.turno_atual == 0:
