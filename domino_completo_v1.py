@@ -104,7 +104,7 @@ class GameState:
         """Desenha na tela a quantidade de vitórias de cada jogador."""
         y_offset = 50
         for i in range(self.num_players):
-            texto_vitoria = font.render(f"Jogador {i} - Vitórias: {self.vitorias[i]}", True, BRANCO)
+            texto_vitoria = font.render(f"Jogador {i + 1} - Vitórias: {self.vitorias[i]}", True, BRANCO)
             screen.blit(texto_vitoria, (10, y_offset))
             y_offset += 40
     
@@ -197,62 +197,83 @@ def desenhar_maos_bots(maos_bots):
         y_right = (altura_tela - altura_total) // 2; x_right = largura_tela - peca_larg - margin
         for _ in mao_right: screen.blit(verso_horizontal, (x_right, y_right)); y_right += peca_alt + espacamento
 
+# Código corrigido para desenhar corretamente as peças no tabuleiro, respeitando orientação e inversão
 def desenhar_tabuleiro(game_state):
     tabuleiro = game_state.tabuleiro
     if not tabuleiro: return
 
-    margin = 150; pecas_desenhadas = []
-    
-    try: anchor_index = tabuleiro.index(game_state.peca_inicial_obj)
-    except (ValueError, AttributeError): anchor_index = 0
-    anchor_peca = tabuleiro[anchor_index]
+    margin = 150
+    pecas_desenhadas = []
 
+    try:
+        anchor_index = tabuleiro.index(game_state.peca_inicial_obj)
+    except (ValueError, AttributeError):
+        anchor_index = 0
+
+    anchor_peca = tabuleiro[anchor_index]
     is_double = anchor_peca.val1 == anchor_peca.val2
     img_anchor = anchor_peca.imagem if is_double else pygame.transform.rotate(anchor_peca.imagem, 90)
     rect_anchor = img_anchor.get_rect(center=(largura_tela / 2, altura_tela / 2))
     pecas_desenhadas.append({'img': img_anchor, 'rect': rect_anchor})
 
     def desenhar_corrente(pecas, p_conexao_inicial, direcao_inicial, lado):
-        ponto_conexao = p_conexao_inicial; direcao = direcao_inicial
-        
+        ponto_conexao = p_conexao_inicial
+        direcao = direcao_inicial
+
         for peca in pecas:
             is_double = peca.val1 == peca.val2
             img = peca.imagem
-            if is_double: img = pygame.transform.rotate(img, 90 if direcao[1] != 0 else 0)
-            else:
-                img = pygame.transform.rotate(img, 0 if direcao[1] != 0 else 90)
-                if peca.inverter_visual:
-                    flip_x = (direcao == (1, 0) or direcao == (-1, 0))
-                    flip_y = (direcao == (0, 1) or direcao == (0, -1))
-                    img = pygame.transform.flip(img, flip_x, flip_y)
+
+            # ROTACIONA se NÃO for dupla
+            if not is_double:
+                if direcao == (1, 0) or direcao == (-1, 0):  # Horizontal → rotaciona 90º
+                    img = pygame.transform.rotate(img, 90)
+                else:  # Vertical → não rotaciona
+
+                    img = pygame.transform.rotate(img, 0)  # Garantido para evitar resíduos visuais
+
+            # INVERTE se necessário
+            if peca.inverter_visual:
+                flip_x = direcao in [(1, 0), (-1, 0)]
+                flip_y = direcao in [(0, 1), (0, -1)]
+                img = pygame.transform.flip(img, flip_x, flip_y)
 
             rect = img.get_rect()
             if direcao == (1, 0): rect.midleft = ponto_conexao
             elif direcao == (-1, 0): rect.midright = ponto_conexao
             elif direcao == (0, 1): rect.midtop = ponto_conexao
-            
+
             nova_direcao = direcao
-            if (direcao == (1, 0) and rect.right > largura_tela - margin): nova_direcao = (0, 1)
-            elif (direcao == (-1, 0) and rect.left < margin): nova_direcao = (0, 1)
+            if (direcao == (1, 0) and rect.right > largura_tela - margin):
+                nova_direcao = (0, 1)
+            elif (direcao == (-1, 0) and rect.left < margin):
+                nova_direcao = (0, 1)
             elif (direcao == (0, 1) and rect.bottom > altura_tela - margin):
                 nova_direcao = (-1, 0) if lado == 'dir' else (1, 0)
-            
+
             if nova_direcao != direcao:
                 direcao = nova_direcao
-                if is_double: img = pygame.transform.rotate(peca.imagem, 90 if direcao[1] != 0 else 0)
-                else: img = pygame.transform.rotate(peca.imagem, 0 if direcao[1] != 0 else 90)
+                img = peca.imagem
+                if not is_double:
+                    if direcao == (1, 0) or direcao == (-1, 0):
+                        img = pygame.transform.rotate(img, 90)
+                    else:
+                        img = pygame.transform.rotate(img, 0)
                 if peca.inverter_visual:
-                    flip_x = (direcao == (1, 0) or direcao == (-1, 0))
-                    flip_y = (direcao == (0, 1) or direcao == (0, -1))
+                    flip_x = direcao in [(1, 0), (-1, 0)]
+                    flip_y = direcao in [(0, 1), (0, -1)]
                     img = pygame.transform.flip(img, flip_x, flip_y)
 
                 rect = img.get_rect()
                 if direcao == (0, 1): rect.midtop = ponto_conexao
-                elif direcao in [(-1, 0), (1,0)]:
-                     if lado == 'dir': rect.midright = ponto_conexao
-                     else: rect.midleft = ponto_conexao
+                elif direcao in [(1, 0), (-1, 0)]:
+                    if lado == 'dir':
+                        rect.midright = ponto_conexao
+                    else:
+                        rect.midleft = ponto_conexao
 
             pecas_desenhadas.append({'img': img, 'rect': rect})
+
             if direcao == (1, 0): ponto_conexao = rect.midright
             elif direcao == (-1, 0): ponto_conexao = rect.midleft
             elif direcao == (0, 1): ponto_conexao = rect.midbottom
@@ -260,11 +281,12 @@ def desenhar_tabuleiro(game_state):
     desenhar_corrente(tabuleiro[anchor_index+1:], rect_anchor.midright, (1,0), 'dir')
     desenhar_corrente(reversed(tabuleiro[:anchor_index]), rect_anchor.midleft, (-1,0), 'esq')
 
-    for p in pecas_desenhadas: screen.blit(p['img'], p['rect'])
+    for p in pecas_desenhadas:
+        screen.blit(p['img'], p['rect'])
 
 def desenhar_info(game_state):
     if game_state.vencedor != -1:
-        msg = "Você Venceu!" if game_state.vencedor == 0 else f"Bot {game_state.vencedor} Venceu!"
+        msg = "Você Venceu!" if game_state.vencedor == 0 else f"Jogador {game_state.vencedor + 1} venceu!"
         cor = AMARELO if game_state.vencedor == 0 else VERMELHO
         texto_vencedor = font_grande.render(msg, True, cor)
         screen.blit(texto_vencedor, (largura_tela/2 - texto_vencedor.get_width()/2, altura_tela/2 - 100))
@@ -273,76 +295,317 @@ def desenhar_info(game_state):
         screen.blit(texto_turno, (largura_tela / 2 - texto_turno.get_width() / 2, altura_tela - 250))
 
     game_state.exibir_vitorias()
+
+
+def jogador_tem_jogada_valida(game_state):
+    mao = game_state.maos[0]
+    ponta_esq, ponta_dir = game_state.pontas
+    
+    # Se o tabuleiro está vazio, qualquer peça é válida
+    if ponta_esq == -1:
+        return True
+    
+    # Verifica se alguma peça da mão encaixa em alguma ponta
+    for peca in mao:
+        if (
+            peca.val1 == ponta_esq or peca.val2 == ponta_esq or
+            peca.val1 == ponta_dir or peca.val2 == ponta_dir
+        ):
+            return True
+    return False
+
+# --- Mostrar quem está jogando ---
+def mostrar_turno_atual(game_state):
+    nomes = ["Você", "Jogador 2", "Jogador 3", "Jogador 4"]
+    turno = game_state.turno_atual
+    if turno == -1: 
+        return
+    nome_turno = nomes[turno]
+    cor = BRANCO if turno == 0 else AMARELO
+
+    texto = font.render(f"Vez de: {nome_turno}", True, cor)
+    # Novo posicionamento no canto superior direito:
+    x = largura_tela - texto.get_width() - 20  # 20px de margem direita
+    y = 20  # 20px de margem do topo
+    screen.blit(texto, (x, y))
+
+# --- Mostrar Regras ---
+def mostrar_regras():
+    esperando = True
+    while esperando:
+        screen.fill((30, 30, 30))
+        titulo = font_grande.render("Regras do Dominó", True, BRANCO)
+        regras = [
+            "1. Cada jogador começa com 7 peças.",
+            "2. A peça inicial é a maior dupla (ex: [6|6]).",
+            "3. O jogo segue em turnos no sentido horário.",
+            "4. Só é possível jogar peças que combinem com as pontas.",
+            "5. Se não tiver jogada válida, passe a vez.",
+            "6. Vence quem ficar sem peças primeiro."
+        ]
+        screen.blit(titulo, (largura_tela//2 - titulo.get_width()//2, 50))
+
+        for i, linha in enumerate(regras):
+            texto = font.render(linha, True, BRANCO)
+            screen.blit(texto, (100, 150 + i * 40))
+
+        texto_voltar = font.render("Pressione ESC para voltar", True, AMARELO)
+        screen.blit(texto_voltar, (largura_tela - 350, altura_tela - 50))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                esperando = False
+
+        pygame.display.flip()
+
+def mostrar_pontuacoes():
+    esperando = True
+    while esperando:
+        screen.fill((20, 20, 20))
+        titulo = font_grande.render("Pontuações", True, BRANCO)
+        screen.blit(titulo, (largura_tela//2 - titulo.get_width()//2, 100))
+
+        texto = font.render("As pontuações são mostradas no topo durante o jogo.", True, BRANCO)
+        screen.blit(texto, (largura_tela//2 - texto.get_width()//2, 250))
+
+        texto_voltar = font.render("Pressione ESC para voltar", True, AMARELO)
+        screen.blit(texto_voltar, (largura_tela - 350, altura_tela - 50))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                esperando = False
+
+        pygame.display.flip()  
+
+# --- Exibir Controles
+def exibir_controles():
+    controles_texto = [
+        "Controles do Jogo:",
+        "Esc: Pausar o Jogo",
+        "Seta para cima: Mover para cima no menu",
+        "Seta para baixo: Mover para baixo no menu",
+        "Enter: Selecionar opção no menu",
+        "Clique: Jogar uma peça"
+    ]
+
+    clock = pygame.time.Clock()
+
+    while True:
+        screen.fill((20, 20, 20))
+        titulo = font_grande.render("Controles", True, BRANCO)
+        screen.blit(titulo, (largura_tela // 2 - titulo.get_width() // 2, 150))
+
+        for i, linha in enumerate(controles_texto):
+            texto = font.render(linha, True, BRANCO)
+            screen.blit(texto, (largura_tela // 2 - texto.get_width() // 2, 250 + i * 40))
+
+        texto_voltar = font.render("Pressione ESC para voltar", True, AMARELO)
+        screen.blit(texto_voltar, (largura_tela // 2 - texto_voltar.get_width() // 2, 350 + len(controles_texto) * 40))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:  # Sai da tela de controles e volta ao menu principal
+                    return
+
+        pygame.display.flip()
+        clock.tick(30)
+
+# --- Função de Menu ---
+def menu_principal():
+    opcoes = ["Iniciar Jogo", "Controles", "Sair"]
+    selecionado = 0
+    clock = pygame.time.Clock()
+
+    while True:
+        screen.fill((20, 20, 20))
+        titulo = font_grande.render("Dominó do TERROR", True, BRANCO)
+        screen.blit(titulo, (largura_tela // 2 - titulo.get_width() // 2, 150))
+
+        for i, opcao in enumerate(opcoes):
+            cor = AMARELO if i == selecionado else BRANCO
+            texto = font.render(opcao, True, cor)
+            screen.blit(texto, (largura_tela // 2 - texto.get_width() // 2, 250 + i * 60))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    selecionado = (selecionado - 1) % len(opcoes)
+                elif event.key == pygame.K_DOWN:
+                    selecionado = (selecionado + 1) % len(opcoes)
+                elif event.key == pygame.K_RETURN:
+                    if opcoes[selecionado] == "Iniciar Jogo":
+                        return "jogo"
+                    elif opcoes[selecionado] == "Controles":
+                        exibir_controles()  # Exibe os controles quando a opção for selecionada
+                    elif opcoes[selecionado] == "Sair":
+                        pygame.quit()
+                        sys.exit()
+
+        pygame.display.flip()
+        clock.tick(30)
+        
+# --- Menu depois que a partida acaba ---
+def menu_pausa():
+    opcoes = ["Continuar", "Reiniciar", "Voltar ao Menu Principal"]
+    selecionado = 0
+    clock = pygame.time.Clock()
+
+    while True:
+        screen.fill((20, 20, 20))
+        titulo = font_grande.render("Pausa", True, BRANCO)
+        screen.blit(titulo, (largura_tela // 2 - titulo.get_width() // 2, 150))
+
+        for i, opcao in enumerate(opcoes):
+            cor = AMARELO if i == selecionado else BRANCO
+            texto = font.render(opcao, True, cor)
+            screen.blit(texto, (largura_tela // 2 - texto.get_width() // 2, 250 + i * 60))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    selecionado = (selecionado - 1) % len(opcoes)
+                elif event.key == pygame.K_DOWN:
+                    selecionado = (selecionado + 1) % len(opcoes)
+                elif event.key == pygame.K_RETURN:
+                    return opcoes[selecionado]
+
+        pygame.display.flip()
+        clock.tick(30)
+
 # --- Lógica Principal do Jogo ---
 def main():
-    game_state = GameState(num_players=4); game_state.distribuir_pecas()
-    bots = [Bot(i, game_state) for i in range(1, 4)]; [bot.start() for bot in bots]
+    game_state = GameState(num_players=4)
+    game_state.distribuir_pecas()
+    bots = [Bot(i, game_state) for i in range(1, 4)]
+    [bot.start() for bot in bots]
     
-    aguardando_escolha = False; peca_para_escolha = None
+    aguardando_escolha = False
     peca_para_escolha = None
     botao_esq_rect = pygame.Rect(largura_tela/2 - 300, altura_tela/2 - 25, 250, 50)
     botao_dir_rect = pygame.Rect(largura_tela/2 + 50, altura_tela/2 - 25, 250, 50)
     botao_passar_rect = pygame.Rect(largura_tela - 220, altura_tela - 70, 200, 50)
-    clock = pygame.time.Clock(); 
+    clock = pygame.time.Clock()
     running = True
 
     while running:
         for event in pygame.event.get():
-            if event.type == pygame.QUIT: running = False
-            if game_state.vencedor != -1: continue
+            if event.type == pygame.QUIT:
+                running = False
+            if game_state.vencedor != -1:
+                continue
 
             if event.type == pygame.MOUSEBUTTONDOWN and game_state.turno_atual == 0:
                 with game_state.lock:
                     if aguardando_escolha:
                         if botao_esq_rect.collidepoint(event.pos):
-                            executar_jogada(game_state, peca_para_escolha, 'esq', 0); game_state.passar_a_vez()
-                            aguardando_escolha = False; peca_para_escolha = None
+                            executar_jogada(game_state, peca_para_escolha, 'esq', 0)
+                            game_state.passar_a_vez()
+                            aguardando_escolha = False
+                            peca_para_escolha = None
                         elif botao_dir_rect.collidepoint(event.pos):
-                            executar_jogada(game_state, peca_para_escolha, 'dir', 0); game_state.passar_a_vez()
-                            aguardando_escolha = False; peca_para_escolha = None
+                            executar_jogada(game_state, peca_para_escolha, 'dir', 0)
+                            game_state.passar_a_vez()
+                            aguardando_escolha = False
+                            peca_para_escolha = None
                     else:
                         if botao_passar_rect.collidepoint(event.pos):
-                            game_state.passar_a_vez(); continue
+                            if not jogador_tem_jogada_valida(game_state):
+                                game_state.passar_a_vez()
+                            else:
+                                print("Você ainda pode jogar! Não pode passar a vez.")
+                            continue
                         for peca_clicada in game_state.maos[0]:
                             if peca_clicada.rect and peca_clicada.rect.collidepoint(event.pos):
                                 if not game_state.tabuleiro:
-                                    executar_jogada(game_state, peca_clicada, 'dir', 0); game_state.passar_a_vez()
+                                    executar_jogada(game_state, peca_clicada, 'dir', 0)
+                                    game_state.passar_a_vez()
                                     break
                                 
                                 ponta_esq, ponta_dir = game_state.pontas
                                 pode_na_esq = peca_clicada.val1 == ponta_esq or peca_clicada.val2 == ponta_esq
                                 pode_na_dir = peca_clicada.val1 == ponta_dir or peca_clicada.val2 == ponta_dir
                                 if pode_na_esq and pode_na_dir:
-                                    aguardando_escolha = True; peca_para_escolha = peca_clicada
+                                    aguardando_escolha = True
+                                    peca_para_escolha = peca_clicada
                                 elif pode_na_esq: 
-                                    executar_jogada(game_state, peca_clicada, 'esq', 0); game_state.passar_a_vez()
+                                    executar_jogada(game_state, peca_clicada, 'esq', 0)
+                                    game_state.passar_a_vez()
                                 elif pode_na_dir: 
-                                    executar_jogada(game_state, peca_clicada, 'dir', 0); game_state.passar_a_vez()
-                                else: print("Jogada inválida.")
+                                    executar_jogada(game_state, peca_clicada, 'dir', 0)
+                                    game_state.passar_a_vez()
+                                else: 
+                                    print("Jogada inválida.")
                                 break 
-        
+
+            # Verificando a tecla ESC para pausar o jogo
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    escolha_pausa = menu_pausa()  # Chama o menu de pausa
+                    if escolha_pausa == "Continuar":
+                        continue  # Continua no loop do jogo
+                    elif escolha_pausa == "Reiniciar":
+                        main()  # Reinicia o jogo
+                        return  # Retorna para o início da função main() para reiniciar
+                    elif escolha_pausa == "Voltar ao Menu Principal":
+                        escolha = menu_principal()  # Vai para o menu principal
+                        if escolha == "jogo":
+                            main()  # Inicia um novo jogo
+                        return  # Retorna ao menu principal
+
+        # Atualiza a tela com o fundo e outros elementos do jogo
         screen.blit(background_image, (0, 0))
+        mostrar_turno_atual(game_state)
         with game_state.lock:
             desenhar_mao_jogador(game_state.maos[0])
             desenhar_maos_bots([game_state.maos[1], game_state.maos[2], game_state.maos[3]])
             desenhar_tabuleiro(game_state)
             desenhar_info(game_state)
-        
-        if game_state.turno_atual == 0 and game_state.vencedor == -1 and not aguardando_escolha:
-            pygame.draw.rect(screen, CINZA, botao_passar_rect)
-            texto_botao = font.render("Passar a Vez", True, BRANCO)
-            screen.blit(texto_botao, (botao_passar_rect.x + 20, botao_passar_rect.y + 10))
-        
+
+        if (
+                game_state.turno_atual == 0 and 
+                game_state.vencedor == -1 and 
+                not aguardando_escolha and 
+                not jogador_tem_jogada_valida(game_state)
+        ):
+
+            if jogador_tem_jogada_valida(game_state):  # Se o jogador tem peças na mão
+                pygame.draw.rect(screen, CINZA, botao_passar_rect)
+                texto_botao = font.render("Passar a Vez", True, BRANCO)
+                screen.blit(texto_botao, (botao_passar_rect.x + 20, botao_passar_rect.y + 10))
+            else:  # Se não tem peças, passa a vez automaticamente
+                game_state.passar_a_vez()
         if aguardando_escolha:
-            overlay = pygame.Surface((largura_tela, altura_tela), pygame.SRCALPHA); overlay.fill((0, 0, 0, 180)); screen.blit(overlay, (0, 0))
-            pygame.draw.rect(screen, VERDE_ESCURO, botao_esq_rect); texto_esq = font.render("Jogar na Esquerda", True, BRANCO); screen.blit(texto_esq, (botao_esq_rect.centerx - texto_esq.get_width()/2, botao_esq_rect.centery - texto_esq.get_height()/2))
-            pygame.draw.rect(screen, AZUL_ESCURO, botao_dir_rect); texto_dir = font.render("Jogar na Direita", True, BRANCO); screen.blit(texto_dir, (botao_dir_rect.centerx - texto_dir.get_width()/2, botao_dir_rect.centery - texto_dir.get_height()/2))
+            overlay = pygame.Surface((largura_tela, altura_tela), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 180))
+            screen.blit(overlay, (0, 0))
+            pygame.draw.rect(screen, VERDE_ESCURO, botao_esq_rect)
+            texto_esq = font.render("Jogar na Esquerda", True, BRANCO)
+            screen.blit(texto_esq, (botao_esq_rect.centerx - texto_esq.get_width()/2, botao_esq_rect.centery - texto_esq.get_height()/2))
+            pygame.draw.rect(screen, AZUL_ESCURO, botao_dir_rect)
+            texto_dir = font.render("Jogar na Direita", True, BRANCO)
+            screen.blit(texto_dir, (botao_dir_rect.centerx - texto_dir.get_width()/2, botao_dir_rect.centery - texto_dir.get_height()/2))
 
         pygame.display.update()
         clock.tick(30)
-        
+
     pygame.quit()
     sys.exit()
 
 if __name__ == '__main__':
-    main()
+    escolha = menu_principal()
+    if escolha == "jogo":
+        main()
+        
