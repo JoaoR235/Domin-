@@ -202,15 +202,12 @@ def desenhar_tabuleiro(game_state):
     tabuleiro = game_state.tabuleiro
     if not tabuleiro: return
 
-    margin = 150
-    pecas_desenhadas = []
+    margin = 150; pecas_desenhadas = []
 
-    try:
-        anchor_index = tabuleiro.index(game_state.peca_inicial_obj)
-    except (ValueError, AttributeError):
-        anchor_index = 0
-
+    try: anchor_index = tabuleiro.index(game_state.peca_inicial_obj)
+    except (ValueError, AttributeError): anchor_index = 0
     anchor_peca = tabuleiro[anchor_index]
+
     is_double = anchor_peca.val1 == anchor_peca.val2
     img_anchor = anchor_peca.imagem if is_double else pygame.transform.rotate(anchor_peca.imagem, 90)
     rect_anchor = img_anchor.get_rect(center=(largura_tela / 2, altura_tela / 2))
@@ -219,24 +216,18 @@ def desenhar_tabuleiro(game_state):
     def desenhar_corrente(pecas, p_conexao_inicial, direcao_inicial, lado):
         ponto_conexao = p_conexao_inicial
         direcao = direcao_inicial
+        # --- Flags para controlar as fases de espelhamento ---
+        a_corrente_esquerda_virou_para_baixo = False
+        a_corrente_direita_virou_para_esquerda = False # <--- ALTERAÇÃO: Nova flag
 
         for peca in pecas:
             is_double = peca.val1 == peca.val2
             img = peca.imagem
 
-            # ROTACIONA se NÃO for dupla
-            if not is_double:
-                if direcao == (1, 0) or direcao == (-1, 0):  # Horizontal → rotaciona 90º
-                    img = pygame.transform.rotate(img, 90)
-                else:  # Vertical → não rotaciona
-
-                    img = pygame.transform.rotate(img, 0)  # Garantido para evitar resíduos visuais
-
-            # INVERTE se necessário
-            if peca.inverter_visual:
-                flip_x = direcao in [(1, 0), (-1, 0)]
-                flip_y = direcao in [(0, 1), (0, -1)]
-                img = pygame.transform.flip(img, flip_x, flip_y)
+            if is_double:
+                img = pygame.transform.rotate(img, 90 if direcao[1] != 0 else 0)
+            else:
+                img = pygame.transform.rotate(img, 0 if direcao[1] != 0 else 90)
 
             rect = img.get_rect()
             if direcao == (1, 0): rect.midleft = ponto_conexao
@@ -244,36 +235,57 @@ def desenhar_tabuleiro(game_state):
             elif direcao == (0, 1): rect.midtop = ponto_conexao
 
             nova_direcao = direcao
-            if (direcao == (1, 0) and rect.right > largura_tela - margin):
-                nova_direcao = (0, 1)
-            elif (direcao == (-1, 0) and rect.left < margin):
-                nova_direcao = (0, 1)
+            if (direcao == (1, 0) and rect.right > largura_tela - margin): nova_direcao = (0, 1)
+            elif (direcao == (-1, 0) and rect.left < margin): nova_direcao = (0, 1)
             elif (direcao == (0, 1) and rect.bottom > altura_tela - margin):
                 nova_direcao = (-1, 0) if lado == 'dir' else (1, 0)
 
             if nova_direcao != direcao:
+                direcao_antiga = direcao
                 direcao = nova_direcao
-                img = peca.imagem
-                if not is_double:
-                    if direcao == (1, 0) or direcao == (-1, 0):
-                        img = pygame.transform.rotate(img, 90)
-                    else:
-                        img = pygame.transform.rotate(img, 0)
-                if peca.inverter_visual:
-                    flip_x = direcao in [(1, 0), (-1, 0)]
-                    flip_y = direcao in [(0, 1), (0, -1)]
-                    img = pygame.transform.flip(img, flip_x, flip_y)
+                
+                # --- Lógica para ativar as flags de fase ---
+                if lado == 'esq':
+                    if direcao == (0, 1) and direcao_antiga == (-1, 0):
+                        a_corrente_esquerda_virou_para_baixo = True
+                # <--- ALTERAÇÃO: Lógica para ativar a nova flag da direita ---
+                elif lado == 'dir':
+                    if direcao == (-1, 0) and direcao_antiga == (0, 1):
+                        a_corrente_direita_virou_para_esquerda = True
+
+                if is_double:
+                    img = pygame.transform.rotate(peca.imagem, 90 if direcao[1] != 0 else 0)
+                else:
+                    img = pygame.transform.rotate(peca.imagem, 0 if direcao[1] != 0 else 90)
 
                 rect = img.get_rect()
                 if direcao == (0, 1): rect.midtop = ponto_conexao
-                elif direcao in [(1, 0), (-1, 0)]:
-                    if lado == 'dir':
-                        rect.midright = ponto_conexao
-                    else:
-                        rect.midleft = ponto_conexao
+                elif direcao in [(-1, 0), (1,0)]:
+                    if lado == 'dir': rect.midright = ponto_conexao
+                    else: rect.midleft = ponto_conexao
+            
+            # --- BLOCO DE ESPELHAMENTO UNIFICADO ---
+            flip_x, flip_y = False, False
+            if peca.inverter_visual:
+                flip_x = (direcao[0] != 0)
+                flip_y = (direcao[1] != 0)
+
+            # Regras para a corrente da ESQUERDA
+            if a_corrente_esquerda_virou_para_baixo:
+                flip_x = not flip_x
+                if direcao == (0, 1):
+                    flip_y = not flip_y
+            
+            # <--- ALTERAÇÃO: Nova regra para a corrente da DIREITA ---
+            if a_corrente_direita_virou_para_esquerda:
+                flip_x = not flip_x
+
+            # Aplica a transformação final
+            if flip_x or flip_y:
+                img = pygame.transform.flip(img, flip_x, flip_y)
+            # --- FIM DO BLOCO ---
 
             pecas_desenhadas.append({'img': img, 'rect': rect})
-
             if direcao == (1, 0): ponto_conexao = rect.midright
             elif direcao == (-1, 0): ponto_conexao = rect.midleft
             elif direcao == (0, 1): ponto_conexao = rect.midbottom
@@ -281,8 +293,7 @@ def desenhar_tabuleiro(game_state):
     desenhar_corrente(tabuleiro[anchor_index+1:], rect_anchor.midright, (1,0), 'dir')
     desenhar_corrente(reversed(tabuleiro[:anchor_index]), rect_anchor.midleft, (-1,0), 'esq')
 
-    for p in pecas_desenhadas:
-        screen.blit(p['img'], p['rect'])
+    for p in pecas_desenhadas: screen.blit(p['img'], p['rect'])
 
 def desenhar_info(game_state):
     if game_state.vencedor != -1:
